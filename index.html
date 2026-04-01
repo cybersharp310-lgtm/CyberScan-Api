@@ -2890,7 +2890,8 @@ function startScan(){
   
   scanSessions[sid]={target,type,status:'running',findings:[]};
   const proto=location.protocol==='https:'?'wss:':'ws:';
-  WS=new WebSocket(`${proto}//${new URL(API()).host}/ws/scan/${sid}`);
+  const apiBase = API() || window.location.origin;
+  WS=new WebSocket(`${proto}//${new URL(apiBase).host}/ws/scan/${sid}`);
   WS.onopen=()=>{WS.send(JSON.stringify({token:JWT,target,scan_type:type,depth}));toast(`Scan launched for ${target}`,'success',1800);addMsg('ai',`🔍 Initiating scan on **${target}**. Bzzz! Gathering data...`)};
   WS.onmessage=e=>{
     const{event,data}=JSON.parse(e.data);

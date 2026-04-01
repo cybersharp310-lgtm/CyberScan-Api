@@ -229,7 +229,7 @@ async def _sec_headers(req: Request, call_next):
     # Content Security Policy - Open connections for deployed frontends
     r.headers["Content-Security-Policy"] = (
         "default-src 'self'; "
-        "script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; "
+        "script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net; "
         "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
         "font-src https://fonts.gstatic.com data:; "
         "img-src 'self' data:; "
@@ -1050,6 +1050,10 @@ async def serve():
     if os.path.exists("index.html"):
         with open("index.html",encoding="utf-8") as f: return HTMLResponse(f.read())
     return JSONResponse({"api":"CyberScan AI v3.1","docs":"/docs","ui":"Place index.html in same directory."})
+
+@app.get("/favicon.ico", include_in_schema=False)
+async def favicon():
+    return Response(content=b"", media_type="image/x-icon", status_code=204)
 
 @app.get("/health")
 async def health():

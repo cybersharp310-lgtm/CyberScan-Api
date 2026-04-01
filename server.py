@@ -22,7 +22,26 @@ from typing import Any, Dict, List, Optional
 
 import sqlite3
 import hashlib
+import binascii
 import urllib.parse
+import secrets
+
+def hash_password(password: str) -> str:
+    salt = hashlib.sha256(os.urandom(60)).hexdigest().encode('ascii')
+    pwdhash = hashlib.pbkdf2_hmac('sha512', password.encode('utf-8'), salt, 100000)
+    pwdhash = binascii.hexlify(pwdhash)
+    return (salt + pwdhash).decode('ascii')
+
+def verify_password(stored_password: str, provided_password: str) -> bool:
+    try:
+        salt = stored_password[:64]
+        stored_hash = stored_password[64:]
+        pwdhash = hashlib.pbkdf2_hmac('sha512', provided_password.encode('utf-8'), salt.encode('ascii'), 100000)
+        pwdhash = binascii.hexlify(pwdhash).decode('ascii')
+        return secrets.compare_digest(pwdhash, stored_hash)
+    except Exception:
+        return False
+
 try:
     import psycopg2
     HAS_PSYCOPG = True
@@ -37,12 +56,20 @@ def init_db():
         conn.autocommit = True
         with conn.cursor() as cur:
             cur.execute('CREATE TABLE IF NOT EXISTS users (id SERIAL PRIMARY KEY, username VARCHAR UNIQUE, password_hash VARCHAR, created_at VARCHAR)')
+            try:
+                cur.execute('ALTER TABLE users ADD COLUMN mfa_secret VARCHAR')
+            except Exception:
+                pass
         return conn
     else:
         print("[DB] Initializing local SQLite database...")
         conn = sqlite3.connect('cyberscan.db', check_same_thread=False)
         conn.execute('PRAGMA journal_mode=WAL')
         conn.execute('CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT UNIQUE, password_hash TEXT, created_at TEXT)')
+        try:
+            conn.execute('ALTER TABLE users ADD COLUMN mfa_secret TEXT')
+        except Exception:
+            pass
         conn.commit()
         return conn
 
@@ -237,10 +264,8 @@ class RegisterReq(BaseModel):
     @field_validator("otp")
     def validate_otp(cls, v: str) -> str:
         v = v.strip()
-        if HAS_TOTP and not re.fullmatch(r"^[0-9]{6}$", v):
-            raise ValueError("OTP must be 6 digits")
-        if (not HAS_TOTP) and v and not re.fullmatch(r"^[0-9]{6}$", v):
-            raise ValueError("OTP must be 6 digits")
+        if v and not re.fullmatch(r"^[0-9]{6}$", v):
+            raise ValueError("OTP must be exactly 6 digits if provided")
         return v
 
 class ScanReq(BaseModel):
@@ -1034,6 +1059,56 @@ async def health():
             "capabilities":{"boto3":HAS_BOTO3,"jwt":HAS_JWT,"mfa":HAS_TOTP,"vault":HAS_CRYPTO,
                             "rate_limit":HAS_RL,"ollama":HAS_AIOHTTP,"anthropic":HAS_ANTHROPIC}}
 
+@app.post("/api/register")
+async def register(request: Request, req: RegisterReq):
+    ip = _client_ip(request)
+    delay = random.uniform(0.1, 0.3)
+    pw_hash = hash_password(req.password)
+    now_str = datetime.now(timezone.utc).isoformat()
+    
+    # Generate unique MFA for this user
+    user_mfa_secret = pyotp.random_base32() if HAS_TOTP else "DISABLED"
+
+    try:
+        if HAS_PSYCOPG and "psycopg2" in str(type(db)):
+            with db.cursor() as cur:
+                cur.execute('INSERT INTO users (username, password_hash, created_at, mfa_secret) VALUES (%s, %s, %s, %s)', (req.username, pw_hash, now_str, user_mfa_secret))
+        else:
+            db.execute('INSERT INTO users (username, password_hash, created_at, mfa_secret) VALUES (?, ?, ?, ?)', (req.username, pw_hash, now_str, user_mfa_secret))
+            db.commit()
+    except Exception as e:
+        await asyncio.sleep(delay)
+        raise HTTPException(status_code=400, detail="Username already exists")
+
+    # Generate QR immediately for the frontend
+    qr_svg = ""
+    masked_secret = ""
+    if HAS_TOTP and HAS_QRCODE:
+        try:
+            import qrcode
+            import io
+            import base64
+            from qrcode.image.svg import SvgImage
+            user_totp = pyotp.TOTP(user_mfa_secret, interval=30)
+            qr_uri = user_totp.provisioning_uri(req.username, "CyberScan AI")
+            qr = qrcode.QRCode(version=1, box_size=10, border=5)
+            qr.add_data(qr_uri)
+            qr.make(fit=True)
+            svg_buffer = io.BytesIO()
+            qr.make_image(image_factory=SvgImage, fill_color="black", back_color="white").save(svg_buffer)
+            qr_svg = f"data:image/svg+xml;base64,{base64.b64encode(svg_buffer.getvalue()).decode()}"
+            masked_secret = "*".join([user_mfa_secret[i] if i%3==0 else "*" for i in range(len(user_mfa_secret))])
+        except Exception:
+            pass
+
+    return {
+        "status": "registered", 
+        "username": req.username,
+        "qr_svg": qr_svg,
+        "mfa_secret": masked_secret,
+        "raw_secret": user_mfa_secret
+    }
+
 @app.post("/api/login")
 async def login(request: Request, response: Response, req: LoginReq):
     """
@@ -1060,17 +1135,46 @@ async def login(request: Request, response: Response, req: LoginReq):
     # Add artificial delay to prevent timing attacks (0.1-0.3 sec random)
     delay = random.uniform(0.1, 0.3)
     
-    # 1. Constant-time password comparison (prevents timing attacks)
-    password_match = secrets.compare_digest(req.password, ADMIN_PW)
-    
+        # 1. Fetch user from database
+    password_match = False
+    user_mfa_secret = None
+    try:
+        if HAS_PSYCOPG and "psycopg2" in str(type(db)):
+            with db.cursor() as cur:
+                cur.execute('SELECT password_hash, mfa_secret FROM users WHERE username = %s', (req.username,))
+                row = cur.fetchone()
+        else:
+            row = db.execute('SELECT password_hash, mfa_secret FROM users WHERE username = ?', (req.username,)).fetchone()
+
+        if row:
+            stored_hash = row[0]
+            if len(row) > 1 and row[1]:
+                user_mfa_secret = row[1]
+            password_match = verify_password(stored_hash, req.password)
+            
+            # Fallback to check admin env password if hash fails but user is literally "admin"
+            if not password_match and req.username == "admin":
+                password_match = secrets.compare_digest(req.password, ADMIN_PW)
+                if password_match:
+                    user_mfa_secret = MFA_SECRET
+
+    except Exception as e:
+        print(f"[AUTH ERROR] DB Error during login: {e}")
+
     if not password_match:
-        print(f"[AUTH FAIL] Username/Password mismatch for user '{req.username}'. IP: {ip}")
-        _track_auth_failure(ip)
-        await asyncio.sleep(delay)
-        raise HTTPException(status_code=401, detail="Invalid credentials (Password mismatch)")
+        # Check hardcoded admin just in case DB is fresh
+        if req.username == "admin" and secrets.compare_digest(req.password, ADMIN_PW):
+            password_match = True
+            user_mfa_secret = MFA_SECRET
+        else:
+            print(f"[AUTH FAIL] Username/Password mismatch for user '{req.username}'. IP: {ip}")
+            _track_auth_failure(ip)
+            await asyncio.sleep(delay)
+            raise HTTPException(status_code=401, detail="Invalid credentials (Password mismatch)")
     
     # 2. Mandatory MFA Enforcement
-    if HAS_TOTP and _totp:
+    if HAS_TOTP and user_mfa_secret and user_mfa_secret != "DISABLED":
+        user_totp = pyotp.TOTP(user_mfa_secret, interval=30)
         if not req.otp:
             print(f"[AUTH FAIL] Missing MFA token. IP: {ip}")
             _track_auth_failure(ip)
@@ -1078,9 +1182,7 @@ async def login(request: Request, response: Response, req: LoginReq):
             raise HTTPException(status_code=401, detail="MFA token required")
         
         # Verify TOTP with 2-window tolerance (±60 sec for clock skew)
-        if not _totp.verify(req.otp, valid_window=2):
-            print(f"[AUTH FAIL] Invalid MFA token '{req.otp}'. IP: {ip}")
-            _track_auth_failure(ip)
+        if not user_totp.verify(req.otp, valid_window=2):
             await asyncio.sleep(delay)
             raise HTTPException(status_code=401, detail="Invalid MFA token (OTP mismatch)")
 
@@ -1300,3 +1402,4 @@ if __name__=="__main__":
     print(f"\n  {P}UI   {W}http://localhost:8000")
     print(f"  {P}API  {W}http://localhost:8000/docs\n")
     uvicorn.run(app, host="0.0.0.0", port=8000, log_level="warning")
+

@@ -2138,7 +2138,8 @@ body{
           <div class="mfa-next-hint" id="mfa-next-hint" style="font-size:.55rem;">Next OTP soon</div>
         </div>
       </div>
-      <button class="neon-btn" onclick="doLogin()">Authenticate</button>
+      <button class="neon-btn" id="auth-btn" onclick="doAuth()">Authenticate</button>
+        <div id="auth-toggle" onclick="toggleAuthMode()" style="color:var(--ac); cursor:pointer; text-align:center; font-size:0.8rem; margin-top:10px; text-decoration: underline;">Need an account? Register</div>
       <div class="auth-err" id="a-err"></div>
       <div class="auth-hint" style="font-size:.6rem">Use your password + current 6-digit authenticator code.</div>
     </div>
@@ -2692,17 +2693,31 @@ async function sfetch(url,opts={}){
 }
 
 // ── Auth & Ping ────────────────────────────────────────────────────────────
-async function doLogin(){
+let isRegisterMode = false;
+  function toggleAuthMode() {
+    isRegisterMode = !isRegisterMode;
+    const btn = document.getElementById('auth-btn');
+    const toggle = document.getElementById('auth-toggle');
+    if(isRegisterMode) {
+      btn.textContent = 'Register';
+      toggle.textContent = 'Already have an account? Login';
+    } else {
+      btn.textContent = 'Authenticate';
+      toggle.textContent = 'Need an account? Register';
+    }
+  }
+
+  async function doAuth(){
   const un=normalizeAuthInput(document.getElementById('au').value);
   const pw=normalizeAuthInput(document.getElementById('ap').value);
   const otp=normalizeAuthInput(document.getElementById('ao').value).replace(/[^0-9]/g,'');
   const err=document.getElementById('a-err');
   if(un.length<3||un.length>64){err.textContent='Username must be 3-64 characters';toast('Username format invalid.','warning',1800);return}
   if(pw.length<4||pw.length>128){err.textContent='Password must be 4-128 characters';toast('Password format invalid.','warning',1800);return}
-  if(mfaRequired && !validOtp(otp)){err.textContent='MFA code must be exactly 6 digits';toast('MFA code must be 6 digits.','warning',1800);return}
+  if(!isRegisterMode && mfaRequired && !validOtp(otp)){err.textContent='MFA code must be exactly 6 digits';toast('MFA code must be 6 digits.','warning',1800);return}
   err.textContent='';
   try{
-    const r=await fetch(`${API()}/api/login`,{
+    const r=await fetch(`${API()}/api/${isRegisterMode ? "register" : "login"}`, {
       method:'POST',
       credentials:'include',
       headers:{'Content-Type':'application/json'},
@@ -2722,10 +2737,29 @@ async function doLogin(){
         err.textContent=(typeof d.detail==='string'?d.detail:'Auth failed');
         toast(err.textContent,'error',2200);
         showAlert('Authentication Failed', err.textContent,'error');
+        }
+        return;
       }
-      return;
-    }
-    JWT = 'cookie-auth'; // Use a dummy token string; real token is in HttpOnly cookie
+      if (isRegisterMode) {
+        toast('Account created successfully! Please secure your code.', 'success', 3000);
+        document.getElementById('ap').value = '';
+        document.getElementById('ao').value = '';
+        
+        if (d.qr_svg) {
+            const img=document.getElementById('qr-img');
+            if(img) img.src=d.qr_svg;
+            const secretEl=document.getElementById('mfa-secret');
+            if(secretEl) secretEl.textContent=d.mfa_secret;
+            toast('SCAN YOUR UNIQUE QR CODE NOW!', 'warning', 10000);
+            showAlert('Setup Authenticator', 'Please scan the new QR Code in the app with your authenticator before trying to log in!', 'warning');
+        } else {
+            showAlert('Account Created', 'Your account has been registered. You can now login.', 'success');
+        }
+        
+        toggleAuthMode();
+        return;
+      }
+      JWT = 'cookie-auth'; // Use a dummy token string; real token is in HttpOnly cookie
     stopMfaTicker();
     document.getElementById('auth').classList.add('out');
     setTimeout(()=>document.getElementById('auth').style.display='none',500);
@@ -2987,3 +3021,7 @@ function formatMD(t){return String(t||'').replace(/```(\w*)\n?([\s\S]*?)```/g,'<
 </script>
 </body>
 </html>
+
+
+
+

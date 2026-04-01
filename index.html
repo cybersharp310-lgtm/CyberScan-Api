@@ -2386,7 +2386,7 @@ body{
 let JWT='', WS=null, scanning=false, findings=[], scanSessions={}, chatHistory=[];
 let filterMode='all';
 let charts={gauge:null,donut:null};
-const API=()=>(localStorage.getItem('be-url')||'http://localhost:8000');
+const API=()=>(localStorage.getItem('be-url')||(window.location.hostname === 'localhost' ? 'http://localhost:8000' : ''));
 let mfaTicker=null;
 let mfaRequired=true;
 let progressToastMarks={25:false,50:false,75:false};

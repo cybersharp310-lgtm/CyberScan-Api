@@ -108,7 +108,7 @@ except ImportError:
 # Admin credentials should be set via environment variable for production use
 if not os.getenv("CYBERSCAN_PASSWORD"):
     print("⚠️  WARNING: CYBERSCAN_PASSWORD not set. Using default 'quodo'. Set via env var for production.")
-ADMIN_PW   = os.getenv("CYBERSCAN_PASSWORD", "quodo")
+ADMIN_PW   = os.getenv("CYBERSCAN_PASSWORD", "quodo").strip()
 
 # JWT Secret: Generate from Fernet key or use secure random if available
 if HAS_CRYPTO:
@@ -1064,6 +1064,7 @@ async def login(request: Request, response: Response, req: LoginReq):
     password_match = secrets.compare_digest(req.password, ADMIN_PW)
     
     if not password_match:
+        print(f"[AUTH FAIL] Username/Password mismatch for user '{req.username}'. IP: {ip}")
         _track_auth_failure(ip)
         await asyncio.sleep(delay)
         raise HTTPException(status_code=401, detail="Invalid credentials")
@@ -1071,12 +1072,14 @@ async def login(request: Request, response: Response, req: LoginReq):
     # 2. Mandatory MFA Enforcement
     if HAS_TOTP and _totp:
         if not req.otp:
+            print(f"[AUTH FAIL] Missing MFA token. IP: {ip}")
             _track_auth_failure(ip)
             await asyncio.sleep(delay)
             raise HTTPException(status_code=401, detail="MFA token required")
         
-        # Verify TOTP with 1-window tolerance (±30 sec for clock skew)
-        if not _totp.verify(req.otp, valid_window=1):
+        # Verify TOTP with 2-window tolerance (±60 sec for clock skew)
+        if not _totp.verify(req.otp, valid_window=2):
+            print(f"[AUTH FAIL] Invalid MFA token '{req.otp}'. IP: {ip}")
             _track_auth_failure(ip)
             await asyncio.sleep(delay)
             raise HTTPException(status_code=401, detail="Invalid MFA token")

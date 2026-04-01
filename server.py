@@ -1067,7 +1067,7 @@ async def login(request: Request, response: Response, req: LoginReq):
         print(f"[AUTH FAIL] Username/Password mismatch for user '{req.username}'. IP: {ip}")
         _track_auth_failure(ip)
         await asyncio.sleep(delay)
-        raise HTTPException(status_code=401, detail="Invalid credentials")
+        raise HTTPException(status_code=401, detail="Invalid credentials (Password mismatch)")
     
     # 2. Mandatory MFA Enforcement
     if HAS_TOTP and _totp:
@@ -1082,7 +1082,7 @@ async def login(request: Request, response: Response, req: LoginReq):
             print(f"[AUTH FAIL] Invalid MFA token '{req.otp}'. IP: {ip}")
             _track_auth_failure(ip)
             await asyncio.sleep(delay)
-            raise HTTPException(status_code=401, detail="Invalid MFA token")
+            raise HTTPException(status_code=401, detail="Invalid MFA token (OTP mismatch)")
 
     # 3. Generate JWT token with secure claims
     _clear_auth_failure(ip)

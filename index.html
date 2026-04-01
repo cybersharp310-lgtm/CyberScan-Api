@@ -88,29 +88,31 @@ button,input,select,textarea{font-family:inherit;font-size:inherit;outline:none}
 /* ══════════════════════════════════════════════════════
    AUTH OVERLAY
    ══════════════════════════════════════════════════════ */
-#auth{position:fixed;inset:0;z-index:5000;background:rgba(3, 7, 14, 0.98);
+#auth{position:fixed;inset:0;z-index:5000;background:rgba(6, 7, 16, 1);
   display:flex;align-items:center;justify-content:center;transition:opacity .5s,transform .5s}
 #auth.out{opacity:0;transform:scale(1.03) translateY(-10px);pointer-events:none}
 
 .auth-card{
-  width:min(800px,94vw);padding:clamp(16px,4vw,32px) clamp(24px,5vw,48px);
+  width:100vw; height:100vh;
+  padding:clamp(20px,5vw,60px) clamp(24px,6vw,120px);
   background: linear-gradient(165deg, rgba(16,14,35,1), rgba(6,7,16,1));
-  border:2px solid rgba(138,43,226,1);
-  border-radius:20px;
+  border:none;
+  border-radius:0;
   position:relative;
-  box-shadow: 12px 12px 0px rgba(138,43,226,0.2); /* Solid hard shadow, absolutely zero blur */
-  overflow:hidden;
+  box-shadow: none;
+  overflow-y:auto;
   display: flex;
   flex-direction: row;
   align-items: center;
-  gap: 40px;
+  justify-content: center;
+  gap: clamp(40px, 8vw, 120px);
 }
 @media (max-width: 768px) {
   .auth-card {
     flex-direction: column;
-    width: min(420px, 92vw);
-    gap: 16px;
-    padding: clamp(12px, 3vw, 24px) clamp(16px, 4vw, 32px);
+    justify-content: center;
+    gap: 24px;
+    padding: clamp(16px, 5vw, 32px);
   }
 }
 .auth-logo{text-align:center; flex: 1;}

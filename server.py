@@ -199,14 +199,14 @@ async def _sec_headers(req: Request, call_next):
         "usb=(), magnetometer=(), gyroscope=(), accelerometer=()"
     )
     
-    # Content Security Policy - Strict but allows necessary resources
+    # Content Security Policy - Open connections for deployed frontends
     r.headers["Content-Security-Policy"] = (
         "default-src 'self'; "
         "script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; "
         "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
         "font-src https://fonts.gstatic.com data:; "
         "img-src 'self' data:; "
-        "connect-src 'self' ws: wss: http://localhost:11434 https://api.anthropic.com; "
+        "connect-src * ws: wss:; "
         "frame-ancestors 'none'; "
         "base-uri 'self'; "
         "form-action 'self';"

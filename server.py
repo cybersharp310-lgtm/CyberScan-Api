@@ -1070,13 +1070,14 @@ async def login(request: Request, response: Response, req: LoginReq):
     
     # 2. Mandatory MFA Enforcement
     if HAS_TOTP and _totp:
-        if not req.otp:
+        # Require OTP if configured, but allow bypass locally for testing if missing
+        if not req.otp and os.environ.get('ENVIRONMENT') != 'development':
             _track_auth_failure(ip)
             await asyncio.sleep(delay)
             raise HTTPException(status_code=401, detail="MFA token required")
         
         # Verify TOTP with 1-window tolerance (±30 sec for clock skew)
-        if not _totp.verify(req.otp, valid_window=1):
+        if req.otp and not _totp.verify(req.otp, valid_window=1):
             _track_auth_failure(ip)
             await asyncio.sleep(delay)
             raise HTTPException(status_code=401, detail="Invalid MFA token")

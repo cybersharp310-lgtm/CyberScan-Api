@@ -1,0 +1,25 @@
+# Render Blueprint file for free tier deployment
+# Deploy easily connected to your GitHub Repo
+services:
+  - type: web
+    name: cyberscan-api
+    env: docker
+    region: ohio # EU options: frankfurt
+    plan: free
+    healthCheckPath: /api/session/info
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: cyberscan-db
+          property: connectionString
+      - key: CYBERSCAN_PASSWORD
+        generateValue: true # Or replace with manual
+      - key: JWT_SECRET
+        generateValue: true
+
+databases:
+  - name: cyberscan-db
+    databaseName: cyberscan
+    user: admin
+    plan: free # Free tier 1GB PostgreSQL
+    region: ohio

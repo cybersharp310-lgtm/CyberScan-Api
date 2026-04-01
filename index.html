@@ -2086,10 +2086,14 @@ body{
     </div>
     <div class="auth-form">
       <div>
+        <div class="field-label">Username</div>
+        <input class="neon-inp" id="au" type="text" placeholder="Enter username (e.g. admin)" autocomplete="username" onkeydown="if(event.key==='Enter')document.getElementById('ap').focus()"/>
+      </div>
+      <div style="margin-top: 12px;">
         <div class="field-label">Password</div>
         <input class="neon-inp" id="ap" type="password" placeholder="Enter access password" autocomplete="off" onkeydown="if(event.key==='Enter')document.getElementById('ao').focus()"/>
       </div>
-      <div>
+      <div style="margin-top: 12px;">
 <div class="field-label">MFA Code <span style="color:var(--nr);font-weight:700;">(Required)</span></div>
         <div style="position:relative;">
           <input class="neon-inp" id="ao" type="text" placeholder="000000" maxlength="6" pattern="\\d{6}" inputmode="numeric" autocomplete="off" oninput="this.value=this.value.replace(/[^0-9]/g,'').slice(0,6)" onkeydown="if(event.key==='Enter')doLogin()" style="text-align:center;letter-spacing:10px;font-size:1.2rem;padding-right:80px;"/>
@@ -2667,9 +2671,11 @@ async function sfetch(url,opts={}){
 
 // ── Auth & Ping ────────────────────────────────────────────────────────────
 async function doLogin(){
+  const un=normalizeAuthInput(document.getElementById('au').value);
   const pw=normalizeAuthInput(document.getElementById('ap').value);
   const otp=normalizeAuthInput(document.getElementById('ao').value).replace(/[^0-9]/g,'');
   const err=document.getElementById('a-err');
+  if(un.length<3||un.length>64){err.textContent='Username must be 3-64 characters';toast('Username format invalid.','warning',1800);return}
   if(pw.length<4||pw.length>128){err.textContent='Password must be 4-128 characters';toast('Password format invalid.','warning',1800);return}
   if(mfaRequired && !validOtp(otp)){err.textContent='MFA code must be exactly 6 digits';toast('MFA code must be 6 digits.','warning',1800);return}
   err.textContent='';
@@ -2678,7 +2684,7 @@ async function doLogin(){
       method:'POST',
       credentials:'include',
       headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({password:pw,otp})
+      body:JSON.stringify({username:un, password:pw, otp})
     });
     const d=await r.json();
     if(!r.ok){

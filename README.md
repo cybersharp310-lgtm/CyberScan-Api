@@ -5,12 +5,13 @@
 ##  Live Production URL
 **The live API is securely deployed at:** 
  **[https://cyberscan-api.onrender.com](https://cyberscan-api.onrender.com)**  
-*(Replace the above URL with your actual generated Render.com URL once deployed)*
+
 
 ##  Deployment Instructions
 This project is configured for one-click deployment via **Render.com**:
 1. Connect your GitHub repository to Render.
-2. Render will automatically detect the ender.yaml Blueprint.
+2. Render will automatically detect the 
+ender.yaml Blueprint.
 3. The database and web service will be provisioned automatically.
 
 ##  Features

@@ -1305,7 +1305,7 @@ async def session_info(request: Request):
         return {"authenticated": False}
     
     try:
-        data = jwt.decode(tok, "SECRET_KEY_REPLACE", algorithms=["HS256"]) # You should use your real secret here or in _chk_token
+        data = jwt.decode(tok, JWT_SECRET, algorithms=[ALGO])
     except:
         return {"authenticated": False}
 
